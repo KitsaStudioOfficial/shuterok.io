@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shuterok.io</title>
+    <style>
+        /* ... CSS залишається майже незмінним, додаємо лише стилі для браузера серверів ... */
+        body { margin: 0; overflow: hidden; background: #111; touch-action: none; font-family: 'Segoe UI', sans-serif; user-select: none; color: white; }
+        canvas { display: block; }
+        #menu, #settings-menu, #game-over { position: absolute; inset: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; }
+        #settings-menu, #game-over { display: none; }
+        input[type="text"] { padding: 15px; font-size: 20px; text-align: center; border-radius: 8px; border: none; margin-bottom: 15px; background: #333; color: white;}
+        button { padding: 15px 40px; font-size: 20px; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 5px; min-width: 200px; }
+        button.red { background: #c0392b; }
+        .setting-col { display: flex; flex-direction: column; align-items: flex-start; max-height: 400px; overflow-y: auto; padding: 10px; border: 1px solid #444; margin-bottom: 10px; width: 300px; }
+        .setting-row { margin: 5px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+        input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+        h3 { margin: 10px 0 5px 0; color: #f1c40f; }
+        #ui-layer { pointer-events: none; position: absolute; inset: 0; }
+        #hud-top { position: absolute; top: 10px; left: 0; right: 0; text-align: center; font-size: 24px; font-weight: bold; text-shadow: 0 2px 2px #000; }
+        #leaderboard { position: absolute; top: 50px; right: 10px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; text-align: right; min-width: 150px; font-size: 14px; }
+        #gear-btn { position: absolute; top: 10px; left: 10px; font-size: 24px; cursor: pointer; pointer-events: auto; opacity: 0.5; }
+        #debug-panel { 
+            position: absolute; top: 50px; left: 10px; 
+            background: rgba(0,0,0,0.6); padding: 8px; 
+            border-radius: 4px; font-family: monospace; font-size: 12px; color: #0f0;
+            pointer-events: none;
+            display: none; 
+        }
+        .dbg-line { margin-bottom: 2px; }
+        #chat-box { position: absolute; bottom: 20px; right: 20px; width: 300px; height: 200px; pointer-events: auto; display: flex; flex-direction: column; }
+        #chat-msgs { flex-grow: 1; overflow-y: auto; background: rgba(0,0,0,0.5); margin-bottom: 5px; padding: 5px; border-radius: 5px; font-size: 14px; text-shadow: 1px 1px 0 #000; }
+        #chat-input { width: 100%; padding: 8px; box-sizing: border-box; background: rgba(0,0,0,0.7); border: 1px solid #555; color: white; border-radius: 5px; display: none; }
+        .msg-name { font-weight: bold; color: #f1c40f; }
+        #upgrades { position: absolute; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 4px; pointer-events: auto; }
+        .stat-row { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.6); padding: 4px; border-radius: 4px; width: 200px; height: 24px; font-size: 12px; cursor: pointer; }
+        .stat-bar { flex-grow: 1; height: 8px; background: #333; }
+        .stat-fill { height: 100%; width: 0%; }
+        .c-dmg { background: #e74c3c; } .c-rel { background: #f1c40f; } .c-spd { background: #3498db; } .c-hp { background: #9b59b6; }
+        .hidden { opacity: 0.3; pointer-events: none; }
+        .mobile-ctrl { position: absolute; bottom: 40px; border-radius: 50%; display: none; pointer-events: auto; }
+        #joy-zone { left: 40px; width: 120px; height: 120px; background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.1); }
+        #joy-knob { width: 50px; height: 50px; background: rgba(255,255,255,0.3); position: absolute; top:35px; left:35px; border-radius: 50%; }
+        #fire-btn { right: 40px; width: 90px; height: 90px; background: rgba(231,76,60,0.4); border: 3px solid rgba(231,76,60,0.6); }
+        #mobile-upgrades { display: none; position: absolute; bottom: 180px; left: 20px; flex-direction: column; gap: 10px; pointer-events: auto; }
+        .mob-up { width: 40px; height: 40px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; opacity: 0.8; }
+        
+        /* SERVER BROWSER STYLES */
+        #server-browser {
+            width: 400px;
+            height: 300px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid #444;
+            border-radius: 8px;
+            overflow-y: auto;
+            margin-top: 10px;
+            padding: 10px;
+        }
+        .server-item {
+            background: #222;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 1px solid #333;
+            text-align: left;
+        }
+        .server-item:hover { background: #333; border-color: #27ae60; }
+        .sv-name { font-weight: bold; color: #2ecc71; font-size: 18px; }
+        .sv-desc { font-size: 12px; color: #ccc; }
+        .sv-ip { font-size: 10px; color: #555; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <h1 style="font-size: 50px; margin-bottom: 10px; color:#27ae60;">SHUTEROK.IO</h1>
+        <div style="margin-bottom: 10px; color: #aaa;">Client v1.4.0</div>
+        
+        <input type="text" id="nick" placeholder="Твой ник" maxlength="15" value="Player">
+        
+        <div id="server-browser">
+            <h3>СЕРВЕРА:</h3>
+            <div id="server-list">
+                Загрузка...
+            </div>
+        </div>
+
+        <button class="red" onclick="toggleSettings(true)" style="margin-top: 20px;">НАЛАШТУВАННЯ</button>
+    </div>
+
+    <div id="settings-menu">
+        <h2>НАСРОЙКИ</h2>
+        <div class="setting-col">
+            <h3>Графика и игра</h3>
+            <div class="setting-row"><input type="checkbox" id="set-hq" checked> Физика блоба</div>
+            <div class="setting-row"><input type="checkbox" id="set-names" checked> Имена</div>
+            <div class="setting-row"><input type="checkbox" id="set-mini" checked> Миникарта</div>
+            <div class="setting-row"><input type="checkbox" id="set-mob"> Мобильное упр.</div>
+            <div class="setting-row"><input type="checkbox" id="set-audio"> Звуки</div>
+
+            <h3>Debug Меню</h3>
+            <div class="setting-row"><input type="checkbox" id="dbg-main" checked> <b>Показать Меню</b></div>
+            <div class="setting-row"><input type="checkbox" id="dbg-fps" checked> FPS</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-ping" checked> PING</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-tps" checked> SERVER TPS</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-walls"> WALLS</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-pl" checked> PLAYERS</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-food"> FOOD</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-ver" checked> VERSIONS</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-hwid" checked> HWID</div>
+            <div class="setting-row"><input type="checkbox" id="dbg-ac" checked> AntiCheat State</div>
+        </div>
+        <button onclick="toggleSettings(false)">ГОТОВО</button>
+    </div>
+
+    <div id="game-over">
+        <h1 style="font-size: 60px; color: gold;">ПОБЕДИТЕЛЬ</h1>
+        <h2 id="winner-name" style="font-size: 40px;">-</h2>
+        <button onclick="location.reload()" style="margin-top: 20px;">В МЕНЮ</button>
+    </div>
+
+    <canvas id="game"></canvas>
+
+    <div id="ui-layer">
+        <div id="hud-top">⏳ <span id="timer">05:00</span></div>
+        <div id="gear-btn" onclick="toggleSettings(true)">⚙️</div>
+        
+        <div id="debug-panel">
+            <div id="d-fps" class="dbg-line">FPS: 0</div>
+            <div id="d-ping" class="dbg-line">PING: 0ms</div>
+            <div id="d-tps" class="dbg-line">S-TPS: 60</div>
+            <div id="d-walls" class="dbg-line">WALLS: 0</div>
+            <div id="d-pl" class="dbg-line">PL: 0</div>
+            <div id="d-food" class="dbg-line">FOOD: 0</div>
+            <div id="d-ver" class="dbg-line">v1.3.5</div>
+            <div id="d-hwid" class="dbg-line">HWID: ...</div>
+            <div id="d-ac" class="dbg-line">AC: OFF</div>
+        </div>
+
+        <div id="leaderboard"></div>
+
+        <div id="chat-box">
+            <div id="chat-msgs"></div>
+            <input type="text" id="chat-input" placeholder="Натисни Enter..." maxlength="50">
+        </div>
+
+        <div id="upgrades" class="hidden">
+            <div style="color:#f1c40f;">Points: <span id="pts">0</span></div>
+            <div class="stat-row" onclick="upgrade('dmg')">1. Dmg <div class="stat-bar"><div class="stat-fill c-dmg" id="b-dmg"></div></div></div>
+            <div class="stat-row" onclick="upgrade('rel')">2. Rel <div class="stat-bar"><div class="stat-fill c-rel" id="b-rel"></div></div></div>
+            <div class="stat-row" onclick="upgrade('spd')">3. Spd <div class="stat-bar"><div class="stat-fill c-spd" id="b-spd"></div></div></div>
+            <div class="stat-row" onclick="upgrade('hp')">4. HP <div class="stat-bar"><div class="stat-fill c-hp" id="b-hp"></div></div></div>
+        </div>
+        <div id="mobile-upgrades">
+            <div class="mob-up c-dmg" onclick="upgrade('dmg')">+</div>
+            <div class="mob-up c-rel" onclick="upgrade('rel')">+</div>
+            <div class="mob-up c-spd" onclick="upgrade('spd')">+</div>
+            <div class="mob-up c-hp" onclick="upgrade('hp')">+</div>
+        </div>
+    </div>
+
+    <div id="joy-zone" class="mobile-ctrl"><div id="joy-knob"></div></div>
+    <div id="fire-btn" class="mobile-ctrl"></div>
+
+    <script src="/secure/v1/ws/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
