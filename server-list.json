@@ -1,14 +1,14 @@
 [
   {
-    "name": "🔥 Главный сервер 1 | Public Alpha",
-    "desc": "Официальный сервер",
-    "ip": "https://82d00805-54f9-40d5-939d-41f8fdbeea46-00-8hl8v75kj5kv.riker.replit.dev",
-    "region": "Replit"
-  },
-  {
-    "name": "🔥 Главный сервер 2 | Public Alpha",
-    "desc": "Официальный 24 на 7 сервер",
+    "name": "🔥 Главный сервер | Public Alpha",
+    "desc": "Официальный сервер 24/7",
     "ip": "https://shuterok-io-server.onrender.com",
     "region": "Frankfurt"
+  },
+  {
+    "name": "Тестовый сервер | Public Alpha",
+    "desc": "Тестовый сервер",
+    "ip": "https://82d00805-54f9-40d5-939d-41f8fdbeea46-00-8hl8v75kj5kv.riker.replit.dev",
+    "region": "USA"
   }
 ]
