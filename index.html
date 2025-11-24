@@ -11,7 +11,7 @@
         <h1 style="font-size: 50px; margin-bottom: 10px; color:#27ae60;">SHUTEROK.IO</h1>
         <div style="margin-bottom: 10px; color: #aaa;">Client v1.4</div>
         
-        <input type="text" id="nick" placeholder="Твой Ник" maxlength="15" value="Player">
+        <input type="text" id="nick" placeholder="Твой Ник" maxlength="15" value="">
         <p>Первое подключение на главный сервер = запуск (1< минуты, не всегда)</p>
         <div id="server-browser">
             <h3>СПИСОК СЕРВЕРОВ:</h3>
@@ -45,12 +45,22 @@
             <div class="setting-row"><input type="checkbox" id="dbg-hwid" checked> HWID</div>
             <div class="setting-row"><input type="checkbox" id="dbg-ac" checked> AntiCheat State</div>
         </div>
+        <div class="setting-row"><input type="checkbox" id="set-auto-reload"> Авто-перезарядка</div>
+        <div class="setting-row">
+            <label for="set-physics">Physics Mode:</label>
+            <select id="set-physics">
+                <option value="0">0 - No Physics</option>
+                <option value="1">1 - Old Physics</option>
+                <option value="2">2 - New Physics</option>
+            </select>
+        </div>
         <button onclick="toggleSettings(false)">ГОТОВО</button>
     </div>
 
     <div id="game-over">
         <h1 style="font-size: 60px; color: gold;">ПОБЕДИТЕЛЬ</h1>
         <h2 id="winner-name" style="font-size: 40px;">-</h2>
+        <p>Перезапуск раунда...</p>
         <button onclick="location.reload()" style="margin-top: 20px;">ВЕРНУТЬСЯ В МЕНЮ</button>
     </div>
 
@@ -81,10 +91,14 @@
 
         <div id="upgrades" class="hidden">
             <div style="color:#f1c40f;">Points: <span id="pts">0</span></div>
+            <div id="ammo-status" style="color:#3498db; font-size:14px; margin-bottom:10px;">Ammo: 1/1</div>
+            <div class="stat-row" onclick="buyOrEquip('default')">0. Default <div class="stat-bar"><div class="stat-fill c-spd" id="b-default"></div></div></div>
             <div class="stat-row" onclick="upgrade('dmg')">1. Dmg <div class="stat-bar"><div class="stat-fill c-dmg" id="b-dmg"></div></div></div>
             <div class="stat-row" onclick="upgrade('rel')">2. Rel <div class="stat-bar"><div class="stat-fill c-rel" id="b-rel"></div></div></div>
             <div class="stat-row" onclick="upgrade('spd')">3. Spd <div class="stat-bar"><div class="stat-fill c-spd" id="b-spd"></div></div></div>
             <div class="stat-row" onclick="upgrade('hp')">4. HP <div class="stat-bar"><div class="stat-fill c-hp" id="b-hp"></div></div></div>
+            <div class="stat-row" onclick="buyOrEquip('shotgun')">5. Shotgun <div class="stat-bar"><div class="stat-fill c-dmg" id="b-shotgun"></div></div></div>
+            <div class="stat-row" onclick="buyOrEquip('minigun')">6. Minigun <div class="stat-bar"><div class="stat-fill c-rel" id="b-minigun"></div></div></div>
         </div>
         <div id="mobile-upgrades">
             <div class="mob-up c-dmg" onclick="upgrade('dmg')">+</div>
@@ -96,6 +110,7 @@
 
     <div id="joy-zone" class="mobile-ctrl"><div id="joy-knob"></div></div>
     <div id="fire-btn" class="mobile-ctrl"></div>
+    <div id="chat-btn" class="mobile-ctrl" onclick="toggleChat()">💬</div>
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="client.js"></script>
