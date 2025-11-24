@@ -109,7 +109,7 @@ async function loadServers() {
     listDiv.innerHTML = 'Загрузка...';
     
     try {
-        const res = await fetch('/server-list.json');
+        const res = await fetch('server-list.json');
         const servers = await res.json();
         
         listDiv.innerHTML = '';
@@ -187,12 +187,12 @@ function setupSocketEvents() {
 
     
     socket.on('connect_error', () => {
-        alert('не удалось подключиться');
+        alert('Не удачное подключение');
         location.reload(); 
     });
 
     socket.on('err', (msg) => {
-        alert('Помилка сервера: ' + msg); 
+        alert('Ошибка сервера: ' + msg); 
         location.reload();
     });
 
