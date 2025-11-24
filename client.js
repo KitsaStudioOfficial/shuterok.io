@@ -126,7 +126,7 @@ async function loadServers() {
     
     try {
         const res = await fetch('https://kitsastudioofficial.github.io/shuterok.io/server-list.json');
-        //const res = await fetch('http://localhost:3001/server-list.json');
+        // const res = await fetch('http://localhost:3001/server-list.json');
         const servers = await res.json();
         
         listDiv.innerHTML = '';
