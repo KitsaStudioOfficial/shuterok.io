@@ -1,4 +1,3 @@
-
 // Sound System
 class SoundManager {
     constructor() {
@@ -26,8 +25,8 @@ const sfx = new SoundManager();
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-const CLIENT_VERSION = "1.4.1";
-let SERVER_VERSION = "?";
+const CLIENT_VERSION = "2.0.0";
+let SERVER_VERSION = "14.8.8";
 let socket = null;
 
 let HWID = localStorage.getItem('shuterok_hwid');
@@ -39,23 +38,29 @@ document.getElementById('d-hwid').innerText = `HWID: ${HWID.substring(0, 10)}...
 
 const settings = {
     hq: true, names: true, minimap: true, audio: false,
+    autoReload: false,
+    physicsMode: 2, // 0 = no physics, 1 = old, 2 = new
     debug: { show: true, fps: true, ping: true, tps: true, walls: false, pl: true, food: false, ver: true, hwid: false, ac: true }
 };
 
-const isTouch = /Android|iPhone/i.test(navigator.userAgent);
+const isTouchCapable = (('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0)
+    || ('ontouchstart' in window)
+    || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)
+    || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
 const savedMob = localStorage.getItem('force_mobile');
-const isMob = savedMob !== null ? (savedMob === 'true') : isTouch;
+const isMob = savedMob !== null ? (savedMob === 'true') : isTouchCapable;
 
 if (document.getElementById('set-mob')) document.getElementById('set-mob').checked = isMob;
 if (document.getElementById('set-audio')) document.getElementById('set-audio').checked = false;
+if (document.getElementById('set-auto-reload')) document.getElementById('set-auto-reload').checked = settings.autoReload;
 
-if (isMob) {
-    document.querySelectorAll('.mobile-ctrl').forEach(e => e.style.display = 'block');
-    document.getElementById('mobile-upgrades').style.display = 'flex';
-}
+// Ensure mobile controls are shown only when mobile mode is enabled
+document.querySelectorAll('.mobile-ctrl').forEach(e => e.style.display = isMob ? '' : 'none');
+const mobileUpEl = document.getElementById('mobile-upgrades');
+if (mobileUpEl) mobileUpEl.style.display = isMob ? 'flex' : 'none';
 
 let meId=null, mapSize=4000, players={}, bullets=[], food=[], walls=[];
-let cam={x:0, y:0}, input={angle:0, move:false};
+let cam={x:0, y:0}, input={angle:0, move:false}, mouseIsDown = false;
 let chatOpen = false;
 
 let fps = 60, frames = 0, lastTime = performance.now();
@@ -69,6 +74,7 @@ window.toggleSettings = (show) => {
         settings.minimap = document.getElementById('set-mini').checked;
         settings.audio = document.getElementById('set-audio').checked;
         sfx.enabled = settings.audio;
+        settings.autoReload = !!document.getElementById('set-auto-reload') && document.getElementById('set-auto-reload').checked;
 
         settings.debug.show = document.getElementById('dbg-main').checked;
         settings.debug.fps = document.getElementById('dbg-fps').checked;
@@ -81,6 +87,11 @@ window.toggleSettings = (show) => {
         settings.debug.hwid = document.getElementById('dbg-hwid').checked;
         settings.debug.ac = document.getElementById('dbg-ac').checked;
 
+        // physics mode selector (0=no,1=old,2=new)
+        if (document.getElementById('set-physics')) {
+            settings.physicsMode = Number(document.getElementById('set-physics').value) || settings.physicsMode;
+            recreateBodiesForMode();
+        }
 
         updateDebugVisibility();
         const mob = document.getElementById('set-mob').checked;
@@ -104,12 +115,18 @@ function updateDebugVisibility() {
 }
 updateDebugVisibility();
 
+// Physics mode UI init (if present)
+if (document.getElementById('set-physics')) {
+    document.getElementById('set-physics').value = String(settings.physicsMode);
+}
+
 async function loadServers() {
     const listDiv = document.getElementById('server-list');
     listDiv.innerHTML = 'Загрузка...';
     
     try {
-        const res = await fetch('https://kitsastudioofficial.github.io/shuterok.io/server-list.json');
+        // const res = await fetch('https://kitsastudioofficial.github.io/shuterok.io/server-list.json');
+        const res = await fetch('http://localhost:3001/server-list.json');
         const servers = await res.json();
         
         listDiv.innerHTML = '';
@@ -131,6 +148,13 @@ async function loadServers() {
     } catch (e) {
         console.error("Server list error:", e);
         listDiv.innerHTML = '<div style="color:red">Ошибка загрузки списка серверов.</div>';
+    }
+}
+
+// Recreate bodies when physics mode changes
+function recreateBodiesForMode() {
+    for (let id in players) {
+        if (players[id]) players[id].body = new SoftBody(players[id].r, players[id].col, settings.physicsMode);
     }
 }
 
@@ -238,10 +262,22 @@ function setupSocketEvents() {
     socket.on('u', pack => {
         pack.p.forEach(srv => {
             let p = players[srv.id];
-            if(!p) p = players[srv.id] = { ...srv, body: new SoftBody(srv.r, srv.col) };
-            else {
+            if(!p) {
+                p = players[srv.id] = { ...srv };
+                p.body = new SoftBody(srv.r, srv.col, settings.physicsMode);
+            } else {
                 p.tx=srv.x; p.ty=srv.y; p.r=srv.r; p.hp=srv.hp; p.mHp=srv.mHp;
                 p.a=srv.a; p.st=srv.st; p.pt=srv.pt; p.sc=srv.sc; p.nm=srv.nm; p.lvl=srv.lvl;
+                p.col = srv.col;
+                p.wp = srv.wp;
+                p.wps = srv.wps;
+                p.weapon = srv.wp;
+                p.weapons = srv.wps;
+                p.ammo = srv.ammo;
+                p.mAmmo = srv.mAmmo;
+                p.relTime = srv.relTime;
+                if (p.body) p.body.setMode(settings.physicsMode);
+                else p.body = new SoftBody(srv.r, srv.col, settings.physicsMode);
             }
         });
         for(let id in players) if(!pack.p.find(p=>p.id===id)) delete players[id];
@@ -263,47 +299,112 @@ function setupSocketEvents() {
 }
 
 class SoftBody {
-    constructor(r, c) { this.nodes=[]; this.r=r; this.c=c; for(let i=0;i<12;i++) this.nodes.push({x:0,y:0,vx:0,vy:0}); }
-    update(x,y,r,a,mov) {
-        this.r=r;
-        for(let i=0;i<12;i++) {
-            let n=this.nodes[i], th=(Math.PI*2*i)/12;
-            let tx=Math.cos(th)*r, ty=Math.sin(th)*r;
-            if(mov) { tx-=Math.cos(a)*r*0.3; ty-=Math.sin(a)*r*0.3; }
-            n.vx+=(tx-n.x)*0.1; n.vy+=(ty-n.y)*0.1; n.vx*=0.8; n.vy*=0.8; n.x+=n.vx; n.y+=n.vy;
+    constructor(r, c, mode = 2) {
+        this.nodes = [];
+        this.r = r;
+        this.c = c;
+        this.mode = mode; // 0=no physics,1=old,2=new
+        this.count = (this.mode === 2) ? 16 : 12;
+        for (let i = 0; i < this.count; i++) this.nodes.push({ x: 0, y: 0, vx: 0, vy: 0 });
+    }
+    setMode(mode) {
+        if (mode === this.mode) return;
+        this.mode = mode;
+        this.count = (this.mode === 2) ? 16 : 12;
+        this.nodes = [];
+        for (let i = 0; i < this.count; i++) this.nodes.push({ x: 0, y: 0, vx: 0, vy: 0 });
+    }
+    update(x, y, r, a, mov) {
+        this.r = r;
+        if (this.mode === 0) return;
+        const nodes = this.nodes;
+        const cnt = this.count;
+        const stiffness = (this.mode === 2) ? 0.18 : 0.1;
+        const damping = (this.mode === 2) ? 0.75 : 0.8;
+        const bias = (mov && this.mode === 2) ? 0.4 : ((mov) ? 0.3 : 0);
+        for (let i = 0; i < cnt; i++) {
+            let n = nodes[i], th = (Math.PI * 2 * i) / cnt;
+            let tx = Math.cos(th) * r, ty = Math.sin(th) * r;
+            if (mov) { tx -= Math.cos(a) * r * bias; ty -= Math.sin(a) * r * bias; }
+            n.vx += (tx - n.x) * stiffness; n.vy += (ty - n.y) * stiffness;
+            n.vx *= damping; n.vy *= damping; n.x += n.vx; n.y += n.vy;
         }
     }
-    draw(ctx,x,y,a) {
-        ctx.fillStyle=this.c; ctx.beginPath();
-        for(let i=0;i<=12;i++) {
-            let n=this.nodes[i%12], nx=this.nodes[(i+1)%12];
-            let mx=(n.x+nx.x)/2+x, my=(n.y+nx.y)/2+y;
-            if(i===0) ctx.moveTo(mx,my); else ctx.quadraticCurveTo(n.x+x,n.y+y,mx,my);
+    draw(ctx, x, y, a) {
+        if (this.mode === 0) {
+            // simple circle
+            ctx.fillStyle = this.c; ctx.beginPath(); ctx.arc(x, y, this.r, 0, Math.PI * 2); ctx.fill();
+            // eyes
+            ctx.fillStyle = 'white';
+            let off = this.r * 0.5, sz = this.r * 0.25;
+            let ex1 = x + Math.cos(a - 0.6) * off, ey1 = y + Math.sin(a - 0.6) * off;
+            let ex2 = x + Math.cos(a + 0.6) * off, ey2 = y + Math.sin(a + 0.6) * off;
+            ctx.beginPath(); ctx.arc(ex1, ey1, sz, 0, 6.28); ctx.arc(ex2, ey2, sz, 0, 6.28); ctx.fill();
+            ctx.fillStyle = 'black';
+            let lx = Math.cos(a) * sz * 0.4, ly = Math.sin(a) * sz * 0.4;
+            ctx.beginPath(); ctx.arc(ex1 + lx, ey1 + ly, sz / 2, 0, 6.28); ctx.arc(ex2 + lx, ey2 + ly, sz / 2, 0, 6.28); ctx.fill();
+            return;
+        }
+        ctx.fillStyle = this.c; ctx.beginPath();
+        for (let i = 0; i <= this.count; i++) {
+            let n = this.nodes[i % this.count], nx = this.nodes[(i + 1) % this.count];
+            let mx = (n.x + nx.x) / 2 + x, my = (n.y + nx.y) / 2 + y;
+            if (i === 0) ctx.moveTo(mx, my); else ctx.quadraticCurveTo(n.x + x, n.y + y, mx, my);
         }
         ctx.fill();
-        ctx.fillStyle='white';
-        let off=this.r*0.5, sz=this.r*0.25;
-        let ex1=x+Math.cos(a-0.6)*off, ey1=y+Math.sin(a-0.6)*off;
-        let ex2=x+Math.cos(a+0.6)*off, ey2=y+Math.sin(a+0.6)*off;
-        ctx.beginPath(); ctx.arc(ex1,ey1,sz,0,6.28); ctx.arc(ex2,ey2,sz,0,6.28); ctx.fill();
-        ctx.fillStyle='black';
-        let lx=Math.cos(a)*sz*0.4, ly=Math.sin(a)*sz*0.4;
-        ctx.beginPath(); ctx.arc(ex1+lx,ey1+ly,sz/2,0,6.28); ctx.arc(ex2+lx,ey2+ly,sz/2,0,6.28); ctx.fill();
+        ctx.fillStyle = 'white';
+        let off = this.r * 0.5, sz = this.r * 0.25;
+        let ex1 = x + Math.cos(a - 0.6) * off, ey1 = y + Math.sin(a - 0.6) * off;
+        let ex2 = x + Math.cos(a + 0.6) * off, ey2 = y + Math.sin(a + 0.6) * off;
+        ctx.beginPath(); ctx.arc(ex1, ey1, sz, 0, 6.28); ctx.arc(ex2, ey2, sz, 0, 6.28); ctx.fill();
+        ctx.fillStyle = 'black';
+        let lx = Math.cos(a) * sz * 0.4, ly = Math.sin(a) * sz * 0.4;
+        ctx.beginPath(); ctx.arc(ex1 + lx, ey1 + ly, sz / 2, 0, 6.28); ctx.arc(ex2 + lx, ey2 + ly, sz / 2, 0, 6.28); ctx.fill();
     }
 }
 
 if (!isMob) {
-    window.onmousemove = e => {
+    window.addEventListener('mousemove', (e) => {
         if(chatOpen || !socket) return;
         input.angle = Math.atan2(e.clientY - canvas.height/2, e.clientX - canvas.width/2);
         input.move = true; socket.emit('i', input);
-    };
-    window.onmousedown = () => !chatOpen && socket && socket.emit('s');
-    window.onkeydown = e => {
-        if (e.key === 'Enter') toggleChat();
+    });
+    window.addEventListener('mousedown', (e) => {
         if (chatOpen || !socket) return;
-        if ('1234'.includes(e.key)) socket.emit('u', ['dmg','rel','spd','hp'][e.key-1]);
-    };
+        // ignore clicks when focused on input fields
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        mouseIsDown = true;
+        const me = players[meId];
+        if (me && me.weapon !== 'minigun') {
+            socket.emit('s');
+        }
+    });
+    window.addEventListener('mouseup', () => mouseIsDown = false);
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { toggleChat(); return; }
+        // ignore when typing in input or chat
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (!socket) return;
+        // Keybinds:
+        // 0 - Default gun
+        // 1 - Damage upgrade
+        // 2 - Reload upgrade
+        // 3 - Speed upgrade
+        // 4 - HP upgrade
+        // 5 - Shotgun
+        // 6 - Minigun
+        if (e.key === '0' || e.code === 'Digit0') buyOrEquip('default');
+        if (e.key === '1' || e.code === 'Digit1') socket.emit('u', 'dmg');
+        if (e.key === '2' || e.code === 'Digit2') socket.emit('u', 'rel');
+        if (e.key === '3' || e.code === 'Digit3') socket.emit('u', 'spd');
+        if (e.key === '4' || e.code === 'Digit4') socket.emit('u', 'hp');
+        if (e.key === '5' || e.code === 'Digit5') buyOrEquip('shotgun');
+        if (e.key === '6' || e.code === 'Digit6') buyOrEquip('minigun');
+        // reload key
+        if (e.key.toLowerCase() === 'r') socket.emit('reload');
+    });
 } else {
     const joy = document.getElementById('joy-zone'), knob = document.getElementById('joy-knob');
     let jId = null;
@@ -330,20 +431,44 @@ function toggleChat() {
     }
 }
 
+window.buyOrEquip = (wp) => {
+    if (!socket) return;
+    const me = players[meId];
+    if (me && !me.weapons?.includes(wp)) {
+        socket.emit('buy_weapon', wp);
+    } else {
+        socket.emit('equip_weapon', wp);
+    }
+};
+
+window.buyWeapon = (wp) => socket && socket.emit('buy_weapon', wp);
+
 window.upgrade = t => socket && socket.emit('u', t);
 
 function updateHUD() {
     const me = players[meId];
     if(!me) return;
     document.getElementById('pts').innerText = me.pt;
-    document.getElementById('upgrades').classList.toggle('hidden', me.pt<=0);
+    document.getElementById('upgrades').classList.remove('hidden');
     ['dmg','rel','spd','hp'].forEach((k,i) => {
         let v = me.st[['dmg','rel','spd','hp'][i]] || 0;
-        document.getElementById('b-'+k).style.width = (v/8*100)+'%';
+        document.getElementById('b-'+k).style.width = Math.min(v/8*100,100)+'%';
     });
+    document.getElementById('b-default').style.width = me.weapons?.includes('default') ? '100%' : '0%';
+    document.getElementById('b-shotgun').style.width = me.weapons?.includes('shotgun') ? '100%' : '0%';
+    document.getElementById('b-minigun').style.width = me.weapons?.includes('minigun') ? '100%' : '0%';
+    const ammoText = me.relTime > 0 ? `Reloading: ${Math.ceil(me.relTime/1000)}s` : `${me.ammo}/${me.mAmmo}`;
+    document.getElementById('ammo-status').innerText = `Ammo: ${ammoText}`;
+    // Auto-reload if enabled and empty and not currently reloading
+    if (settings.autoReload && socket && me.ammo <= 0 && me.relTime <= 0) {
+        socket.emit('reload');
+    }
     let list = Object.values(players).sort((a,b)=>b.sc-a.sc).slice(0,5);
     document.getElementById('leaderboard').innerHTML = list.map((p,i)=>`${i+1}. ${p.nm}`).join('<br>');
 }
+
+
+
 
 function draw() {
     frames++;
@@ -363,6 +488,12 @@ function draw() {
             let p = players[id];
             if(p.tx!==undefined) { p.x+=(p.tx-p.x)*0.15; p.y+=(p.ty-p.y)*0.15; }
             if(settings.hq) p.body.update(p.x,p.y,p.r,p.a,(id===meId?input.move:true));
+        }
+        if (mouseIsDown) {
+            const me = players[meId];
+            if (me && me.weapon === 'minigun') {
+                socket.emit('s');
+            }
         }
         cam.x = me.x - canvas.width/2;
         cam.y = me.y - canvas.height/2;
